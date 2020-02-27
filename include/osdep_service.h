@@ -785,6 +785,10 @@ __inline static void _set_workitem(_workitem *pwork)
 	#include <linux/interrupt.h>	// for struct tasklet_struct
 	#include <linux/ip.h>
 	#include <linux/kthread.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+	#include <linux/sched/signal.h>
+#endif
+
 
 #ifdef CONFIG_IOCTL_CFG80211	
 //	#include <linux/ieee80211.h>        
@@ -827,7 +831,15 @@ __inline static void _set_workitem(_workitem *pwork)
 #else
 	typedef struct semaphore	_mutex;
 #endif
-	typedef struct timer_list _timer;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))	
+    typedef struct legacy_timer_emu {       
+        struct timer_list t;        
+        void (*function)(unsigned long);        
+        unsigned long data; 
+    } _timer;
+#else
+        typedef struct timer_list _timer;
+#endif
 
 	struct	__queue	{
 		struct	list_head	queue;	
@@ -950,22 +962,43 @@ __inline static void rtw_list_delete(_list *plist)
 	list_del_init(plist);
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+static void legacy_timer_emu_func(struct timer_list *t)
+{	
+    struct legacy_timer_emu *lt = from_timer(lt, t, t);	
+    lt->function(lt->data);
+}
+#endif
+
+
 __inline static void _init_timer(_timer *ptimer,_nic_hdl nic_hdl,void *pfunc,void* cntx)
 {
 	//setup_timer(ptimer, pfunc,(u32)cntx);	
 	ptimer->function = pfunc;
 	ptimer->data = (unsigned long)cntx;
-	init_timer(ptimer);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+        timer_setup(&ptimer->t, legacy_timer_emu_func, 0);
+#else
+        init_timer(ptimer);
+#endif
 }
 
 __inline static void _set_timer(_timer *ptimer,u32 delay_time)
 {	
-	mod_timer(ptimer , (jiffies+(delay_time*HZ/1000)));	
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))	
+        mod_timer(&ptimer->t, (jiffies+(delay_time*HZ/1000)));
+#else	
+        mod_timer(ptimer , (jiffies+(delay_time*HZ/1000)));
+#endif
 }
 
 __inline static void _cancel_timer(_timer *ptimer,u8 *bcancelled)
 {
-	del_timer_sync(ptimer); 	
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))	
+    del_timer_sync(&ptimer->t);
+#else	
+	del_timer_sync(ptimer);
+#endif	
 	*bcancelled=  _TRUE;//TRUE ==1; FALSE==0
 }
 
@@ -1453,7 +1486,12 @@ extern void rtw_yield_os(void);
 __inline static unsigned char _cancel_timer_ex(_timer *ptimer)
 {
 #ifdef PLATFORM_LINUX
-	return del_timer_sync(ptimer);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))	
+        return del_timer_sync(&ptimer->t);
+#else	
+        return del_timer_sync(ptimer);  
+#endif
+
 #endif
 #ifdef PLATFORM_FREEBSD
 	_cancel_timer(ptimer,0);

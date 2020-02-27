@@ -84,6 +84,8 @@ typedef struct _ADAPTER _adapter, ADAPTER,*PADAPTER;
 #include <rtw_p2p.h>
 #include <rtw_tdls.h>
 #include <rtw_ap.h>
+#include <rtw_compat.h>
+
 
 #include "../hal/dm.h"
 
